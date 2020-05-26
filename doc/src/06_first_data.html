@@ -1,0 +1,157 @@
+Using sections and alignment
+
+<p>
+This example is a slight modification of the previous one, to
+include the use of a section definition. Using such a definition
+raises questions about alignment, which is a subject that needs a 
+bit of care in assembly programming. 
+</p>
+
+<h3>The example</h3>
+
+<pre class="codeblock" lang="asm">
+// Outputs a simple message using sys_write
+  
+.section .rodata
+msg:
+    .ascii "Hello, World\n"
+
+.text
+.align 2
+
+SYS_EXIT = 1
+SYS_WRITE = 4
+STDOUT = 1
+
+.global _start
+
+// Exit the program.
+//   On entry, r0 should hold the exit code
+exit:
+    mov    %r7, $SYS_EXIT
+    swi    $0
+
+_start:
+    // Use the sys_write syscall to output a string
+    mov    %r7, $SYS_WRITE
+    mov    %r0, $STDOUT
+    ldr    %r1, =msg // Store the address of the message in r1
+    mov    %r2, $13  // Store the length of the message in r2
+    swi    $0
+
+    // Now exit
+    mov    %r0, $0
+    b      exit
+</pre>
+
+<h3>sections</h3>
+</p>
+The first thing to note about the example is the new section definition:
+<p>
+
+<pre class="codeblock" lang="asm">
+.section .rodata
+</pre>
+
+</p>
+This indicates that the content that follows, up until the next 
+<code>.section</code> statement, should be placed in a section
+called <code>.rodata</code>, or <b>r</b>ead <b>o</b>nly <b>data</b>. 
+This makes for generally neater organization that just dumping named
+data items into the program code, and allows the operating system
+to treat this data in a more secure way. For example, Linux
+will not allow the program to write to any data in a read-only 
+section -- trying to do so will result in an "illegal operation"
+signal.
+</p>
+<p>
+A section is simply an indivisible unit of machine code or data. The linker
+will aggregate the sections of a particular type, and lay them out in the
+executable file in a way that the kernel requires. For our purposes,
+three section types are important.
+</p>
+ 
+<ul>
+<li><p><code>.text</code> -- a section containing executable code. The 
+kernel may prevent a program branching to 
+a section that is not executable.<p></li>
+<li><p><code>.rodata</code> -- read-only data. This is initialized data that cannot be overwritten at run time.</p></li>
+<li><p><code>.data</code> -- data that is initialized, but can be overwritten at run time.</p></li>
+<li><p><code>.bss</code> -- uninitialized data. A BSS section is writable, but 
+initialized to zeros</p></li>
+</ul>
+<p>
+Each of these sections is allocated a particular region of the running
+process's memory map. 
+</p>
+
+<p>
+There's no limit to the number of sections that an assembly language program
+can define. In fact, it's sometimes useful to define a section for each
+function. This is because the linker is able to work out which sections
+have no links to them, so they can be removed from the executable file
+completely, saving space and making the program slightly quicker to
+load.  
+</p>
+
+<h3>Alignment</h3>
+<p>
+The next statement in the program is:
+</p>
+
+<pre class="codeblock" lang="asm">
+.align 2
+</pre>
+
+<p>
+<i>Alignment</i> is the process of padding out the contents of the
+machine code so that particular elements start on particularly 
+favourable addresses. This may be done for efficiency, or because
+some specification demands it. 
+</p>
+<p>
+In the 32-bit ARM architecture, it's generally most efficient if everything
+starts on a 4-byte boundary. That is, each new program instruction or 
+new item of data should have an address that is a multiple of four bytes.
+With a 32-bit CPU this makes sense -- memory will be read in 4-byte
+chunks. If a specific piece of data lies half in one chunk and half in the
+next, then it will require a certain amount of decoding to be useful.
+The CPU does this decoding, but it's better if it doesn't have to.
+</p>
+<p>
+The ARM ABI additionally requires that any piece of data that is 
+"public" must align to 8 bytes. "public" in this context means that
+the data is accessible to some other library. My examples are all
+self-contained, so I only align to 4-byte boundaries.
+</p>
+<p>
+The "2" in the instruction <code>.align 2</code> refers to the second
+bit of the address, and does not mean "2 bytes". This is a little
+confusing, because some assemblers and compilers <i>do</i> allow
+specific byte intervals to be specified. In practice, on ARM this 
+instruction aligns with four (= 2 raised to the power 2) -byte boundaries.  
+</p>
+<p>
+When the assembler encounters an <code>.align</code> instruction, it
+simply inserts zeros into the object file until it reaches a
+boundary. If the data is already aligned in the required way, then 
+the instruction will have no effect. 
+</p>
+<p>
+There's no need to use <code>.align</code> at the start of the file,
+because this is address zero. Nor is there any need to use it between
+blocks of program code, since ARM instructions are always four bytes
+long. <code>.align</code> <i>should</i> be used between sections,
+and between data elements. We will see that sometimes alignment has
+to be done programatically as well -- but that's for later.
+</p>
+
+
+<h3>Summary</h3>
+<ul>
+<li><p>The assembler recognizes different types of section, and there advantages to using appropriate numbers and types of sections.</p></li>
+<li><p>Assembly programming requires paying attention to alignment.</p></li>
+</ul>
+
+
+

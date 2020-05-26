@@ -1,0 +1,206 @@
+Elementary number formatting
+
+<p>
+In this example and the two that follow I will demonstrate how to 
+format a register, whose contents are (signed) binary, for display as 
+a base-10 number. If you're used to programming in high-level
+languages, you'll probably not have given much thought to low-level
+display operations like this -- the compiler or some library just takes
+care of it. Of course, we can use libraries in assembly programs, too, but
+doing things like this manually is more educational. 
+</p>
+<p>
+Our basic approach to formatting a binary will be repeated division
+by ten, printing the remainder at each stage. If you think about it,
+you'll appreciate that this will give the result in the wrong order --
+the least-significant digit will be printed first. In a later article
+I'll explain how we can correct that.  
+</p>
+<p>
+This example further illustrates the technique of using the stack
+for local data storage, that I introduced in an earlier article.
+</p>
+
+
+<h3>The example</h3>
+<p>
+The listing below only shows those parts of the program that are new;
+the <code>print_str</code> and <code>strlen</code> functions are 
+the same as in previous examples.
+</p>
+
+<pre class="codeblock" lang="asm">
+/* =========================== putchar  =====================================*/
+// Write to standard output the character in %r0. The sys_write function
+//  requires an address in memory, not a register value. So we need somehow
+//  to store the %r0 value locally before it can be displayed.
+putchar:
+
+PUTCHAR_LOCAL = 8           // How much data to reserve on the stack - 8 bytes
+    push   {r0, r1, fp, lr} // Store the registers we will overwrite
+    sub    sp, $PUTCHAR_LOCAL  // Move the stack _down_ to allow for our data
+
+    mov    %fp, %sp         // %fp will reference the start of our 8-byte area
+
+    mov    %r1, %fp         // Use %r1 to count the position we are writing
+    strb   %r0,[%r1]        // Set the character to memory in the stack
+    add    %r1, $1          // And increment the offset by one byte
+    mov    %r0, $0          // Store the terminating null character
+    strb   %r0,[%r1]        // And write it out
+
+    mov    %r0, %fp         // print_str needs an address in %r0
+    bl     print_str        // Print the string
+
+    add    sp, $PUTCHAR_LOCAL  // Move the stack pointer over our data area
+    pop    {r0, r1, fp, lr} // and restore the registers
+    bx     lr
+
+
+/* =========================== itoa1 ========================================*/
+//  Outputs the integer as ASCII digits in reverse order, because that's
+//   easiest at this stage.
+itoa1:
+    push   {r0-r2, lr}
+    mov    %r2, %r0   // Keep the running total in %r2
+    mov    %r1, $10   // Keep the const 10 in r1
+
+itoa_loop:
+
+    mov    %r0, %r2
+    bl     mod         // Divide running total by 10; remainder left in %r0
+
+    add    %r0, $48    // Add '0' to make the number into an ASCII digit
+    bl     putchar     // Print the digit
+
+    sdiv   %r2, %r1    // Divide the running total by 10
+    cmp    %r2, $0     // If there's anything left, repeat the division
+    bne    itoa_loop
+
+    pop    {r0-r2, lr}
+    bx     lr
+
+
+/* =========================== start ========================================*/
+_start:
+    mov    %r0, $12345      // Number to be converted goes in %r0
+    bl     itoa1            // Convert it
+
+    ldr    %r0, =EOL        // Print a newline, to make the output clearer
+    bl     print_str
+
+    // exit
+    mov    %r0, $0
+    b      exit
+
+</pre>
+
+<p>
+The <code>putchar</code> function outputs a single character whose
+ASCII value is in the <code>r0</code> register. It does this by 
+forming a null-terminated string in local memory in the stack, and
+then calling <code>print_str</code> on that string. The string will
+always be exactly two bytes long -- one for the character, and one
+for the null; but the stack has to be aligned correctly, as we've
+discussed before.
+</p>
+<p>
+If you look carefully at this function, you should see an area of 
+inefficiency that can easily be improved. The function <code>print_str</code>
+is designed to take a null-terminated string, and calculate its length
+using<code>strlen</code>. But we already know the length -- it's always
+exactly one byte, because <code>putchar</code> is designed to print a 
+byte. 
+</p>
+<p>
+In my example I've implemented the <code>putchar</code> method in terms
+of <code>print_str</code> -- but wouldn't it be more efficient the
+other way around? Wouldn't it be better to implement <code>print_str</code>
+in terms of repeated calls on <code>putchar</code>? If we did this, we
+could have an efficient <code>putchar</code> that always printed one
+byte.
+</p>
+<p>
+The answer is, in fact, no -- this wouldn't be more efficient. 
+The reason is that syscalls are slow. Implementing a syscall for
+every character would be hugely inefficient. Printing "Hello, World"
+would require twelve syscalls, instead of one. 
+</p>
+<p>
+Of course, outputting our decimal digits one-by-one is also inefficient,
+but I'll fix that in a later example.
+</p>
+<p>
+We could still improve efficiency by having <code>putchar</code> call
+<code>sys_write</code> directly, passing a single byte, rather than having
+it call <code>print_str</code> as my example does. The problem with 
+this approach is that we'b be splitting low-level operations across multiple functions.
+Suppose, for example, that we wanted to implement a scheme to buffer
+characters, so that <code>sys_write</code> only got called for a complete
+line of text, or when the buffer was full. In production code you'd
+almost certainly want to do this. If all the low-level output is in 
+a single function, you'd only have to change this one function to 
+change the entire program to use buffered output.
+</p>
+<p>
+In the end, there are trade-offs to be made between comprehensibility,
+maintainability, and efficiency in assembly language, just as there
+are in any form of programming. However, the very reason for
+using assembly language -- speed and efficient storage -- argues against
+creating comprehensible and maintainable code. Balancing competing
+requirements is particularly difficult in assembly programming.
+</p>
+
+<h3>Number conversion</h3>
+
+<p>
+The textbook way to convert a number from one base to another is to
+divide repeatedly by the base. In this case, we want to convert the 
+binary number whose decimal value is 12345 to a sequence of decimal digits.
+It isn't sufficient just to get the decimal value for each digit, we
+also have to get the ASCII code for that digit.
+</p>
+<p>
+The first step is to divide 12345 mod 10, that is, to get the remainder
+on dividing by 10. This yields the smallest digit, 5. ASCII codes
+for digits start at (decimal) 48 for the character '0', so we
+add 48 to the remainder and print it.  We then divide
+the whole number by 10, which shifts the decimal digits down, giving
+1234. We repeat this process until we've divided the number down
+to zero. The output of the program is "54321" which is, of course,
+reversed. 
+</p>
+<p>
+A useful feature of this method is that it works for any number base.
+For example, we could convert to hexadecimal, rather than decimal,
+by dividing by 16. However, we can't just convert a hexadecimal digit
+to an ASCII code by adding 48 as we did for decimal -- the ASCII codes
+for letters don't follow on directly from the digits. However, it isn't
+particularly difficult to write a function that outputs a hexadecimal
+digit. Modifying the code to output the result in octal (base 8), for
+example, is trivially easy.
+</p>
+
+<h3>Signed and unsigned conversion</h3>
+
+The <code>itoa1</code> function carries out an <i>unsigned</i> base
+conversion. It will give the correct response if the argument in 
+the <code>r0</code> register is being treated as unsigned. In practice,
+if we're working in decimal, we probably want to be able to handle
+signed numbers. I'll come back to this point in a later example.
+
+
+<h3>Summary</h3>
+<ul>
+<li><p>Working in assembler often means implementing functionality that we
+take completely for granted with high-level languages.</p></li>
+<li><p>There's a standard method for base conversion by repeated division, which works with any number base. However, it relies on modulo division, which
+we have to implement ourselves.</p></li>
+<li><p>As a program gets more complicated, the more it becomes apparent
+that design trade-offs have to be made. Ironically, assembly language is often
+chosen for reasons of efficiency, but the most efficient code is often
+the least maintainable. This is true in all programming languages, but
+it's particularly acute with assembly language.</p></li>
+</ul>
+
+
+

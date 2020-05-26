@@ -1,0 +1,158 @@
+Nesting functions
+
+<p>
+In the earlier example introducing function calls I mentioned in passing
+that care had to be taken when function calls are nested. It's time
+to explain why, and what specifically needs to be done.
+Nesting of function calls, often to great depth, is a ubiquitous
+feature of modern programming, in any language. It's important
+that we have a way to implement it reliably.
+</p>
+
+<h3>The example</h3>
+
+This example combines all the code we've used until now, and
+extends it to print a number of different messages. The main
+body of the program calls a function called <code>print_str</code>
+to print a text string. <code>print_str</code> needs to know
+the length of the string, so it can tell the <code>sys_write</code>
+syscall how much data to output. <code>print_str</code>
+calls <code>strlen</code> to get the length. So we have 
+two levels of function call: <code>_start</code> calls
+<code>print_str</code> which calls <code>strlen</code>. 
+
+<pre class="codeblock" lang="asm">
+// This example demonstrates nested function calls. The function 
+//   print_str calls the function strlen to work out the length of
+//   the string it was passed. 
+
+.section .rodata 
+msg1:
+    .ascii "String 1\n\0"
+.align 2
+msg2:
+    .ascii "String 2\n\0"
+
+.text
+.align 2
+
+SYS_EXIT = 1
+SYS_WRITE = 4
+STDOUT = 1
+
+.global _start
+
+/* =========================== exit ========================================*/
+// Exit the program.
+//   On entry, r0 should hold the exit code
+exit:
+    mov    %r7, $SYS_EXIT
+    swi    $0
+
+/* =========================== strlen ======================================*/
+// Calulate the length of a null-terminated string
+//   On entry, r0 is the address of the string
+//   On exit, r0 is the length of the string, not including
+//   the terminating null
+strlen:
+   push    {r4-r5,lr}  // Save the values of %r4 and %r5, and the LR 
+   mov     %r4, $0     // Use %r4 as the character count; initially 0
+strlen_0:
+   ldrb    %r5,[r0]    // Read into %r5 the value in memory location %r0
+   cmp     %r5, #0     // Compare to zero, the end-of-line terminator
+   beq     strlen_1    // If it's equal to zero, jump out of loop
+   add     %r0, $1     // If not zero, add one to the character count...
+   add     %r4, $1     //  ...and to the address we are looking at
+   b strlen_0          // Then do the loop again
+strlen_1:
+   mov     %r0, %r4    // Transfer the character count to %r0 for return 
+   pop     {r4-r5,lr}  // Restore the temporary registers and LR
+   bx      lr
+
+/* ======================== print_str =======================================*/
+// Prints to stdout the text whose address is in the r0 register. The
+//  text should be null-terminated
+print_str:
+    push   {r2-r7, lr}
+
+    mov    %r5, %r0   // Save string address in %r5
+    bl     strlen     // Get the length in %r0
+    mov    %r2, %r0   // Transfer length to %r2
+  
+    mov    %r7, $SYS_WRITE
+    mov    %r1, %r5  // Address is in r5
+    mov    %r0, $STDOUT
+
+    swi    $0
+
+    pop    {r2-r7, lr}  
+    bx     lr
+
+
+/* =========================== start ========================================*/
+_start:
+    // Print msg1
+    ldr    %r0, =msg1
+    bl     print_str
+
+    // Print msg2
+    ldr    %r0, =msg2
+    bl     print_str
+
+    // Now exit
+    mov    %r0, $0
+    b      exit
+
+</pre>
+
+<h3>What's new about this example?</h3>
+<p>
+Only one new idea is introduced here: pushing the link register.
+On entry to the function we push the registers that the function
+changes <i>which includes the link register</i>. On exit, we
+restore those registers.
+</p>
+
+<pre class="codeblock" lang="asm">
+    push   {r2-r7, lr}
+</pre>
+
+<pre class="codeblock" lang="asm">
+    pop    {r2-r7, lr}
+</pre>
+
+<p>
+Why does the function change the value of <code>lr</code>? It's because
+this register is an implicit part of the call process. When we call
+the function using <code>bl</code>, this sets the return address into
+the link register. However, the next, nested function call sets its
+<i>own</i> return address, overwriting the caller's value. This will
+cause an infinite loop if the value of the <code>lr</code> is not 
+preserved.
+</p>
+<p>
+Does the <code>strlen</code> function need to preserve the value of
+<code>lr</code>? In fact, it doesn't, because it doesn't call any
+functions itself. However, <i>not</i> preserving the link register
+in a function of any complexity can be very risky in the long term.
+Suppose we change the implementation of the function so that it
+does, in fact, make a function call? This will create an error that
+could potentially be very difficult to troubleshoot. 
+</p>
+<p>
+Most CPUs have a specific function call instruction that automatically
+pushes the return address on the stack. The ARM CPU gives the programmer
+the choice whether to preserve return addresses or not. It's certainly
+faster not too, because the return does not involve a memory read; but
+a choice to work this way needs careful consideration.
+</p>
+
+<h3>Summary</h3>
+<ul>
+<li><p>Nested function calls are a ubiquitous feature of modern programming.</p></li>
+<li><p>The ARM CPU allows the programmer to control the mechanics of function calling, to improve efficiency.</p></li>
+<li><p>Care has to be taken when using methods that will fail in nested function calls.</p></li>
+</ul>
+
+
+

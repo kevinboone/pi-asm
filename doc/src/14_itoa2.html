@@ -1,0 +1,171 @@
+A useable binary-to-decimal conversion
+
+<p>
+This example shows a more useful way to convert from binary to
+decimal, which could easily be extended to convert to other
+number bases. It introduces two new functions --
+<code>itoa2</code> which writes the converted number into memory,
+and <code>print_num</code> which uses <code>itoa2</code> to 
+print the result to the console. All the calculation will
+be carried out using memory allocated on the stack.
+</p>
+
+
+<h3>The example</h3>
+<p>
+The complete listing is rather long, so I'm only showing the new
+parts. The new functions rely on <code>strlen</code>, <code>print_str</code>,
+<code>mod</code>, and <code>reverse</code> are unchanged from
+previous examples.
+</p>
+
+<pre class="codeblock" lang="asm">
+/* =========================== itoa2 ========================================*/
+// A better attempt at an itoa function. This version takes two arguments:
+//   %r0 - the number to be converted
+//   %r1 - address to store resulting digits
+// This version also copes with negative numbers. It uses the reverse
+//   function from the previous example to put the digits (and the sign)
+//   in the proper order.
+
+itoa2:
+    push   {r0-r5, lr}
+
+    mov    %r4, $0    // %r4 will remember whether the supplied number
+                      //   was negative 
+    mov    %r3, %r1   // %r3 contains the address to store the data,
+                      //  originally passed in r1
+    mov    %r5, %r1   // So does %r5. %r3 will be incremented when building
+                      //  the number, so we need to track the original
+                      //  start address when it comes time to reverse
+                      //  the digits.
+
+    mov    %r2, %r0   // Keep the running total in %r2
+    mov    %r1, $10   // Keep the const 10 in r1
+
+    cmp    %r0, $0    // Is the number to be converted less than zero?
+    bge    itoa2_loop // If it isn't, skip the negation step
+
+    neg    %r2, %r2   // If we have a negative number, make it positive 
+    mov    %r4, $1    //   ... and keep track of the fact it was negative
+
+itoa2_loop:
+  
+    mov    %r0, %r2
+    bl     mod         // Divide running total by 10. mod is now in %r0
+
+    add    %r0, $48    // Add '0' to make the number into an ASCII digit
+    strb   %r0, [%r3]  // Store the digit at the address in %r3 
+    add    %r3, $1     //   ... and then increment %r3 for the next digit
+
+    sdiv   %r2, %r1    // Divide the running total by 10 
+    cmp    %r2, $0     // If there's anything left, repeat the division
+    bne    itoa2_loop    
+
+    cmp    %r4, $1     // If %r4 = 1, we started with a negative number...
+    bne    itoa2_pos
+
+    mov    %r0, $45    //  ... so store a negative sign (char 45)
+    strb   %r0, [%r3]  //  ... at the position %r3 now points
+    add    %r3, $1     //  ... and increment %r3 so we can...
+itoa2_pos:
+
+    mov    %r0, $0     // Store a null to finish the number string
+    strb   %r0, [%r3] 
+
+    mov    %r0, %r5   
+    bl     reverse     // Reverse the digits, including the sign. This is
+                       //  why we wrote the sign on the end of the number.
+
+    pop    {r0-r5, lr}
+    bx     lr
+
+/* =========================== print_num ====================================*/
+print_num:
+PRINTNUM_LOCAL = 16             // Allow space for the largest number,
+                                //  plus the minus sign, plus the null;
+                                //  Round up to nearest 8 bytes
+
+    push   {r0, r1, fp, lr}     // Store the registers we will overwrite
+    sub    sp, $PRINTNUM_LOCAL  // Move the stack _down_ to allow for our data
+    mov    %fp, %sp             // %fp references the start of our work area
+
+    mov    %r1, %fp             // For call to itoa2 we need:
+    bl     itoa2                //   %r0 = number, %r1 = work area
+
+    mov    %r0, %fp             // Set %r0 to point to the converted number
+    bl     print_str            // Print it
+
+    add    sp, $PRINTNUM_LOCAL  // Move the stack pointer over our data area
+    pop    {r0, r1, fp, lr}     // and restore the registers
+    bx     lr
+
+/* =========================== start ========================================*/
+_start:
+    ldr    %r0, =12345      // Number to be converted goes in %r0
+    bl     print_num        // Print it 
+
+    ldr    %r0, =EOL        // Print a newline, to make the output clearer
+    bl     print_str
+
+    ldr    %r0, =-32720     // Let's try a negative number 
+    bl     print_num        // Print it 
+
+    ldr    %r0, =EOL        // Print a newline
+    bl     print_str
+
+    // exit
+    mov    %r0, $0
+    b      exit
+</pre>
+
+<h3>The <code>itoa2</code> function</h3>
+<p>
+This function takes two arguments -- the binary number to be
+converted in <code>r0</code>, and the address of an area of
+memory to write the result in <code>r1</code>. It is the caller's
+responsibility to allocate an area of memory large enough to 
+hold the converted decimal string -- the <code>itoa</code> method
+does not do this check. Indeed, it <i>can't</i> check. 
+</p>
+<p>
+<code>itoa2</code> implements a <i>signed conversion</i> -- that is,
+the number to be converted is treated as signed. If it is negative,
+then the function negates it (that is, makes it positive), and remembers
+that it needs to put a minus sign on the front of the number. Because
+the converion process gets the converted digits in the wrong order, 
+we will need to use <code>reverse</code> to correct this. This has
+the added complication that we need to ensure that the minus sign ends
+up on the front of the number, not the end. We can do this by putting
+the minus sign on the end before reversing, or putting it at the front
+and reversing only the part of the string after the minus sign.
+I've chosen the first approach, but I don't think there's any 
+particular advantage to one or the other.
+</p>
+
+<h3>The <code>print_num</code> function</h3>
+<p>
+This function takes a (signed) number in a register, and prints
+the decimal representation to the console. This function uses
+the stack technique we've discussed before to allocate temporary
+storage on the stack. This storage has to be large enough
+to hold the largest possible decimal number, plus the minus sign,
+plus the terminating null. Fortunately, it's not difficult to
+work out this size. 
+</p>
+<p>
+<code>print_num</code> calls <code>itoa2</code> to do the conversion,
+passing the temporary storage area in the stack as the memory
+value in <code>r1</code> This temporary memory will be lost when
+<code>print_num</code> returns, but that's fine -- the number has
+been printed, and we no longer care about the intermediate results.
+</p>
+
+<h3>Summary</h3>
+<ul>
+<li><p>Even a seemingly simple operation like printing a decimal number can require a surprising amount of assembly code.</p></li>
+<li><p>However, this complexity can be managed by building small, self-contained functions and combining them together.</p></li>
+</ul>
+
+
+

@@ -1,0 +1,167 @@
+More complicated string processing
+
+<p>
+In the last example I explained how to convert a binary
+number to a series of decimal digits for display. The process
+produced it's output in reverse order, so we need a way to
+reverse it. This example demonstrates a slightly more complicated
+example of string processing -- reversing a null-terminated string
+in memory.
+</p>
+
+
+<h3>The example</h3>
+<p>
+For brevity, I have omitted the <code>strlen</code> and
+<code>print_str</code> functions, as they are unchanged from the
+previous example. 
+</p>
+
+<pre class="codeblock" lang="asm">
+// This example demonstrates how to reverse the characters of a 
+//  null-terminated string, but swapping the characters at the ends
+//  and then moving inwards. This process avoids the need to allocate
+//  any temporary memory for the operation. 
+
+// NOTE .data, not .rodata
+.section .data 
+EOL:
+    .asciz "\n"
+.align 2
+msg:
+    .asciz "Hello, World"
+
+.text
+.align 2
+
+.global _start
+
+
+/* =========================== reverse =====================================*/
+// Reverse the bytes in the string whose address is in %r0. If the string is
+//  less than two bytes long, no change is made (but it is safe to call
+//  the function). 
+reverse:
+    push   {r0-r5,lr}
+
+    mov    %r4, %r0     // %r4 points to the start of the string 
+    mov    %r5, %r0     // So does %r5, for now
+    bl     strlen       // Get the string length in %r0
+
+
+    cmp    %r0,$1       // Compare the length with 1
+    bls    reverse_done // "Branch if Less or Same" to end of function
+
+    add    %r5, %r0   
+    sub    %r5, $1       // %r5 points to the end of the string
+
+    lsr    %r0, $1       // Divide by two
+    mov    %r2, %r0      // %r2 now holds the loop count
+    
+reverse_loop:            // Repeat the swap, working from the ends inward
+
+    ldrb   %r0, [%r4]    // Read the end characters into %r0 and %r1 
+    ldrb   %r1, [%r5] 
+    mov    %r3, %r1
+    strb   %r3, [%r4]    // Store the swapped end characters
+    strb   %r0, [%r5]
+    add    %r4, $1       // Move the pointers inwards
+    sub    %r5, $1
+
+    sub    %r2, $1       // Decrement the loop counter %r2
+    cmp    %r2, $0       //   ... and repeat if it is not yet zero
+    bne    reverse_loop
+
+reverse_done:
+    pop    {r0-r5,lr}
+    bx     lr
+
+
+/* =========================== start ========================================*/
+_start:
+    ldr    %r0, =msg 
+    bl     reverse 
+    bl     print_str   
+
+    ldr    %r0, =EOL        // Print a newline, to make the output clearer
+    bl     print_str
+
+    // exit
+    mov    %r0, $0
+    b      exit
+</pre>
+
+<p>
+The function <code>reverse</code> takes the address of a null-terminated
+string in register <code>r0</code>. It reverses the string at that
+location in memory, up to the null terminator. The reversal is
+'in place' -- the data supplied to the function is changed. 
+It would be perfectly feasible to implement a function that took
+two address arguments -- one pointing to the string to reverse,
+and one to an area of memory for the result. In fact, this
+would be <i>easier</i> to implement, because the memory mangement
+would be less fiddly. We could also implement a function that took
+the address of a string, and allocated some new memory for the
+reversed version. We haven't discussed dynamic memory allocation yet,
+so that's not really feasible just now. My point is simply that 
+many functions lend themsevles
+to a number of different modes of interaction with their callers. 
+</p>
+
+<p>
+We need to be a little
+careful not to reverse the location of the null terminator, because
+that would result in a string with no contents. Also, the method I've
+used will fail catastrophically if applied to a string that actually
+can't be reversed because it's too short. So the function
+starts by checking the length of the supplied string.
+</p>
+<p>
+In this simple example, the string to be reversed is identified by
+the label <code>msg:</code>. You might have noticed that I've
+changed the section definition from <code>.rodata</code> to 
+<code>.data</code>. This is because we will be calling the
+<code>reverse</code> function on data in this section, and the
+function needs to be able to write it. 
+</p>
+<p>
+The implementation of the <code>reverse</code> method is, as always in
+these examples, written for clarity rather than efficiency. It has
+the same problem that any ARM code has, that manipulates data in
+single bytes -- the same 32-bit section of memory is read repeatedly.
+Even with the simplification of ignoring this fact, the function
+is longer and more complicated-looking than the comparable example
+in C would be. This is largely because the same construct -- the
+conditional branch -- has to be used to implement the various, 
+more expressive
+constructs that high-level languages have to control program flow.
+<p>
+<p>
+<code>reverse</code> works by assigning the <code>r4</code> register
+to the address of the start of the string, and the <code>r5</code>
+register to the end (not including the null). We then swap the
+bytes at memory addresses <code>r4</code> and <code>r5</code>, and
+move these registers towards each other. We know how many reversal
+steps are required -- half the number of characters, rounded down.
+The division by two is done using a <code>lsr</code> (<b>l</b>ogical
+<b>s</b>hift <b>r</b>ight) operation. We'd have to be a bit careful
+about doing division using a shift if the number were signed, but
+the length of a string is never going to be negative.
+</p>
+<p>
+One final new feature: I've used the <code>.asciz</code> tag to 
+define the string. This automatically adds the terminating null
+to form a null-terminated string, so we don't have to remember to
+add it. This adds a little readability, provided we're actually
+using null-terminated strings.
+</p>
+
+<h3>Summary</h3>
+<ul>
+<li><p>Assembly programming gives rise to the same questions about the interaction between called and calling functions that affect any other kind of programming.</p></li>
+<li><p>In the example, I chose an interface that was simple to implement, but it changed the calling function's data. This will not always be appropriate.</p></li>
+<li><p>The availability of only a single program control structure -- the conditional branch -- makes assembly programming inexpressive, compared to high-level languages. This is a problem that can be ameliorated, but only to a limited extent, by documentation.</p></li>
+</ul>
+
+
+

@@ -1,0 +1,194 @@
+Basic arithmetic operations
+
+<p>
+This example demonstrates some of the fundamental integer arithemetic
+operations in the ARM instruction set.
+</p>
+
+<h3>Integer arithmetic</h3>
+<p>
+Integer arithmetic is arithmetic on whole numbers. It may, or may not,
+accomodate negative numbers as well as positive ones,
+ depending on the context. If the arithmetic
+allows for negative numbers, it is described as <i>signed</i>, otherwise
+<i>unsigned</i>. The ARM instruction set provides some signed and
+some unsigned operations -- it's for the programmer to decide which
+is most appropriate in a particular calculation. 
+</p>
+<p>
+The ARM CPU does integer arithmetic in its 32-bit registers, although 
+sometimes these can be used in pairs to handle larger numbers. A
+32-bit register can store numbers in the range 0 to 4&nbsp;294&nbsp;967&nbsp;295 if
+the value is treated as unsigned, or the range 
+-2&nbsp;147&nbsp;483&nbsp;648&nbsp; to 2&nbsp;147&nbsp;483&nbsp;647 if signed.
+Whether signed or unsigned, the register can hold one of 2<sup>32</sup>
+discrete values -- the difference is in how they are interpreted. A
+register is neither signed nor unsigned in itself. 
+Signed arithmetic requires not only the proper
+choice of instructions, but also attention to how overflows and 
+carries are handled.
+</p>
+<p>
+A 32-bit register can hold integers that are fairly large, for everyday
+purposes. 32-bits is enough to store any Unicode character, or the 
+number of seconds since Julius Caesar lived, or the number of frames
+into playback of a movie. A 32-bit register isn't large enough to 
+store the number of metres 
+between stars, or the number of atoms in a planet but, in cases like
+that, we don't usually need the precision to count individual metres
+or individual atoms. Calculations like this typically call for the use
+of <i>floating point</i> arithmetic, which embodies the notion of scale.
+ARM CPUs may, or may not, have support for floating-point math; in these
+articles I am assuming no such support, and working only with integers. 
+</p>
+<p>
+It's worth bearing in mind, in fact, that some ARM CPUs don't 
+even support integer division operations, although most recent devices
+do. I don't believe that any 
+have built-in support for integer modulo division, which is one of
+the reasons I have chosen it for this article. In addition, it will
+come in useful in future examples. 
+</p>
+
+<h3>The example</h3>
+<p>
+The modulo division <i>a mod b</i> is (for present purposes)
+ the remainder when <i>a</i>
+is divided by <i>b</i>. In integers, it can be expressed by this
+formula: 
+</p>
+<blockquote>
+a mod b = a - b * (a / b)
+</blockquote>
+
+<p>
+To implement it, we'll need three basic integer operations:
+multiply, subtract, and divide. 
+</p>
+
+<pre class="codeblock" lang="asm">
+/* =========================== mod ==========================================*/
+// Calculate the integer remainder after dividing %r0 by %r1. The result is
+//  returned in %r0
+// The relevant formula is %r0 - (%r1 * (%r0 / %r1)). This works because
+//  integer division (sdiv) loses the fraction. It's a bit crude, but
+//  easy to understand.
+mod:
+    push    {r4}
+    mov     %r4, %r0
+    sdiv    %r0, %r1
+    mul     %r0, %r1
+    sub     %r4, %r0
+    mov     %r0, %r4
+    pop     {r4}
+    bx lr
+</pre>
+
+<p>
+It's fairly obvious what <code>mul</code> and <code>sub</code> do.
+<code>sdiv</code> is  <b>s</b>igned <b>div</b>ision. There's a
+<code>udiv</code> unsigned operation as well -- the division instruction 
+is the only one of the basic arithmetic operations that has different
+signed and unsigned variants.  
+</p>
+<p>
+Notice that even a relatively simple arithmetic expression like the
+one I'm using to calculate the remainder requires a lot of 
+assembly expressions. It's often possible to make the operation more
+readable by using extra registers, or the stack, but these steps
+tend to reduce efficiency.
+</p>
+
+<h3>A note on instruction syntax</h3>
+<p>
+Despite my example above, most ARM arithment instructions take
+three operands. The full syntax for an <code>add</code> is
+</p>
+<pre class="codeblock" lang="asm">
+   add %result_register %operand_register_1 %operand_register_2
+</pre>
+
+or
+
+<pre class="codeblock" lang="asm">
+   add %result_register %operand_register %number
+</pre>
+
+<p>
+That is, an arithmetic operation performs the calculation on two
+registers, or a register and a number, and puts the result into another
+register.
+</p>
+<p>
+If only two operands are supplied, the first one is both the result 
+register and the first operand. So when I write
+</p>
+
+<pre class="codeblock" lang="asm">
+   add %r0,$1
+</pre>
+
+<p>that's actually a short form of</p>
+
+<pre class="codeblock" lang="asm">
+   add %r0,%r0,$1
+</pre>
+
+
+<h3>Other integer arithmetic operations</h3>
+<p>
+ARM CPUs support a range of <i>shift</i> and <i>rotate</i> operations.
+Some of these can be used to speed up certain arithmetic operations.
+For example, a left shift by one bit amounts to multiplying by two. 
+Two bits is a multiplication by four, and so on. However, these operations 
+need to be used with care.  
+</p>
+<p>
+There are also "carry" forms of the basic operations. For example,
+<code>addc</code>, <b>add</b> with <b>c</b>arry, adds 1 to the result
+if the carry flag is set. The carry flag will be set if a previous
+arithmetic operation overflowed, so addition with carry is a useful
+way to chain 32-bit operations together to form operations on
+larger integers.
+</p>
+
+<h3>Integer arithmetic is complicated</h3>
+<p>
+This is not uniquely a problem with assembly programming, but assembly
+does throw it into sharp relief -- integer arithmetic is 
+surprisingly difficult to do robustly and efficiently. In fact, it's
+difficult to do robustly <i>or</i> efficiently, and both together can be
+a real challenge.
+</p>
+<p>
+Problems don't usually arise when handling small numbers -- that is,
+numbers much smaller than the maximum value of a register. It's when
+handling large numbers that we have to be careful about deciding which
+registers or memory locations hold signed or unsigned values, and
+combining signed and unsigned operations appropriately. For example,
+it's a common trick to shift all the bits in a register left one
+place to performa a multiplication by two. This works fine until
+you shift a binary 1 into the most significant position of an 
+unsigned number, which then gets treated as signed in the next
+operation. Your multiplication by two has become a multiplication
+by minus two, which is unlikely to yield useful results.
+</p>
+<p>
+Programmers often turn to assembly because they believe they can create 
+smaller or more efficient code than a compiler can, and integer arithmetic
+is one area that seems, on the face of it, to offer potential rewards
+in this area. However, compiler designers have had many years to
+optimize the code their tools generate, and we won't beat the compiler
+by naive use of assembly. It takes real expertise and a good grasp
+of math to do integer arithmetic effectively.
+</p>
+
+<h3>Summary</h3>
+<ul>
+<li><p>ARM supports add, subtract, multiply and, in most modern devices divide. It also has a range of shift and rotate operations.</p></li>
+<li><p>A register is inherently neither signed nor unsigned -- the programmer has to implement signed or unsigned arithmetic by careful selection of operations and handling of overflows .</p></li>
+<li><p>Simplistic application of integer operations rarely results in code that outperforms a compiler's output.</p></li>
+</ul>
+
+
+

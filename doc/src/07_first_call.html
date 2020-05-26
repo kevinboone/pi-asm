@@ -1,0 +1,204 @@
+Introduction to function calls
+
+<p>
+This example demonstrates how function calls are implemented in
+ARM assembly language. We will code the skeleton of
+a function called <code>strlen</code> that calculates the length of
+a text string. The actual implementation will be stubbed out for now,
+because we haven't discussed the conditional branch and comparison
+operations that will be needed to complete it. The details 
+will come later. The code still just prints "Hello, World"; it just
+does it in a more flexible way.
+</p>
+
+<h3>What is a function call?</h3>
+<p>
+In high-level language programming, there are subtle differences between
+functions, procedures, and sub-routines. In assembly language there is
+no distinction, unless the programmer chooses to create one.
+I will use the term "function" for any self-contained piece of code
+that might take arguments, and might return some results. This is
+the same terminology that C programmers use.  
+</p>
+<p>
+Similarly, the distinction between "call by name", "call by reference", 
+and "call by value" semantics that affect high-level programming
+are irrelevant here. In assembler programming, all arguments to functions
+are simply numbers. It's entirely up to the programmer to decide
+how those numbers are to be interpreted.
+</p>
+
+
+<h3>The example</h3>
+
+<pre class="codeblock" lang="asm">
+// This example demonstrates how to implement a function (subroutine)
+//  call called 'strlen' that returns the length of a text string in
+//  bytes. The actual implementation is stubbed out -- we will implement
+//  the logic later
+
+.section .rodata
+msg:
+    .ascii "Hello, World\n\0"
+
+.text
+.align 2
+
+SYS_EXIT = 1
+SYS_WRITE = 4
+STDOUT = 1
+
+.global _start
+
+// Exit the program.
+//   On entry to exit, r0 should hold the exit code
+exit:
+    mov    %r7, $SYS_EXIT
+    swi    $0
+
+// Calulate the length of a null-terminated string
+//   On entry, r0 is the address of the string
+//   On exit, r0 is the length of the string, not including
+//   the terminating null
+strlen:
+   ldr    %r0, =10 // 10 is a dummy value. We will calculate it
+                   //  in the next example
+   bx     lr
+
+_start:
+    ldr    %r0, =msg
+    bl     strlen
+    // Length of string is now in %r0
+
+    // Use the sys_write syscall to output a string
+    mov    %r2, %r0  // Transfer length of the message from r0 to r2
+    mov    %r7, $SYS_WRITE
+    mov    %r0, $STDOUT
+    ldr    %r1, =msg // Store the address of the message in r1
+    swi    $0
+
+    // Now exit
+    mov    %r0, $0
+    b      exit
+</pre>
+
+<p>
+You might have noticed that, compared to the previous example,
+ I've changed the definition of 
+the messge string to end in a zero byte:
+</p>
+
+<pre class="codeblock" lang="asm">
+    .ascii "Hello, World\n\0"
+</pre>
+
+<p>
+This is called "null termination", and is a convention from C programming.
+Having a specific terminating character allows a program to work out
+how long a string is, if it isn't known in advance.
+I've tried to avoid getting into a discussion of C in these articles, but
+this use of a terminating null to allow the string's length to be
+calculated is extremely common. Most importantly for our purposes,
+it is a convention followed by the Linux kernel. In the previous example
+we did not need to terminate the string with any particular symbol, because
+the <code>sys_write</code> syscall is not designed for text strings --
+it can output any kind of data. For that reason, the syscall expects
+to be told the length of the data. 
+</p>
+<p>
+On the other hand, kernel syscalls that need to know filenames, or
+directory names, <i>always</i> expect a null-terminated string as
+input, as do many others. For better or worse, there's no getting
+away from null-terminated strings in low-level programming. That's why
+I've introduced the concept at this stage.
+</p>
+
+
+<h3>Calling a function</h3>
+
+ARM machine code has a primitive function-calling mechanism. 
+In this example, I call the <code>strlen</code> function like this:
+
+<pre class="codeblock" lang="asm">
+_start:
+    ldr    %r0, =msg
+    bl     strlen
+    // Length of string is now in %r0
+</pre>
+
+<p>
+I have decided that the function will take as its argument the 
+address of a string, and return the number of bytes in the string.
+By convention, the first (and only) argument will be passed in the
+<code>r0</code> register, and the same register will contain the
+first (and only) return value when the function ends. This use of
+registers for function calling is in accordance with the ARM
+procedure call specification, as I explained in an earlier section.
+</p>
+<p>
+The function call is started with the instruction <code>bl strlen</code>.
+<code>strlen</code> is just the label of the address where the
+function starts. <code>bl</code> is <b>b</b>ranch and <b>l</b> link.
+The 'branch' part is just a jump to another address, as we've seen
+before. The 'link' part means that the address immediately ahead of
+the jump is placed into the <i>link register</i>. In assembly language,
+the link register is usually denoted <code>lr</code>. 
+</p>
+<p>
+In short, the <code>bl</code> instruction executes a jump, but leaves
+in the link register the address to come back to after the function
+completes. 
+</p>
+
+<h3>Returning from a function</h3>
+
+<p>
+I've explained how to call a function using the <code>bl</code> instruction.
+This starts execution from the start of the function. When the function
+is finished -- whether that's at the end of the function's code or not
+-- it executes
+</p>
+
+<pre class="codeblock" lang="asm">
+    bx   lr
+</pre>
+
+<code>bx</code> is <b>b</b>ranch e<b>x</b>change -- it simply just to 
+the address indicated by the specified register. In this case
+-- and in nearly every case you'll see -- the register is <code>lr</code>,
+the link register. This jump will be back to the instruction immediately
+after the branch that invoked the function.
+
+<h3>Why is this a primitive implementation?</h3>
+<p>
+A bit of thought should make it clear that the <code>bl/bx</code> method
+of function calling is very limited. Functions may call one another
+to any depth -- function 'A' may call function 'B', which calls
+function 'C', and so on. But there's only one link register. This
+means that if we use only the link register, deeper functions will
+overwrite the value of the link register set by shallower ones. 
+In short, the <code>bl/bx</code> mechanism is only suitable for
+<i>leaf</i> functions -- functions that don't call any other functions
+themselves. 
+</p>
+<p>
+For functions other than leaf functions, we have to extend the 
+<code>bl/bx</code> with other mechanisms, usually involving the
+stack. I will show examples of this later. It's worth bearing in
+mind that, if you can use the <code>bl/bx</code> mechanism alone safely,
+you should, because it will be much faster than any operation that
+has to save and restore the link register on each function call.  
+</p>
+
+<h3>Summary</h3>
+<ul>
+<li><p>The use of null-terminated strings is ubiquitous in Linux, 
+despite its limitations. Assembly programmers need to understand this
+method of representing strings, even if they don't use it in their own
+code.</p></li>
+<li><p>Function calls can be implemented using the link register, but 
+this method needs to be used carefully when functions are nested.</p></li>
+</ul>
+
+
+

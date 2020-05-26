@@ -1,0 +1,103 @@
+Using constants in assembly programming
+
+<p>
+This example makes a slight imrovement to the readability of the 
+previous one, but no change to its limited functionality.
+</p>
+
+<h3>The example</h3>
+
+<p>
+Here is the code.
+</p>
+
+<pre class="codeblock" lang="asm">
+// This example illustrate one way to define a constant, to make
+//  the code more readble
+
+.text
+
+SYS_EXIT = 1
+
+.global _start
+
+// Exit the program.
+//   On entry, r0 should hold the exit code
+exit:
+    mov    %r7, $SYS_EXIT
+    swi    $0
+
+_start:
+    mov    %r0, $44
+    b      exit
+</pre>
+
+<h3>Constants and symbols</h3>
+<p>
+The only new feature in this example is the use of a constant symbol
+that represents the syscall number. You may recall that the syscall
+<code>sys_exit</code> has syscall number 1. It's perfectly legitmate
+to use the literal number 1, but using the symbol <code>SYS_EXIT</code>
+makes the code more readable. If we only use this value once in the
+program, a simple comment may make its use clear; but if a value is
+used repeatedly, it's easier to assign a meaningful symbolic name to it.
+This is particularly the case if the value might change in the future.
+</p>
+<p>
+we can also define a symbol in either of these two ways, which are
+synonymous with using the <code>=</code> sign:
+</p>
+
+<pre class="codeblock" lang="asm">
+    .equ SYS_EXIT 1
+    .set SYS_EXIT 1
+</pre>
+
+<p>
+Symbols defined this way do not have to be literal values -- they can
+be expressions <i>that can be evaluated at assembly time</i>. For example,
+it's legitimate, and often useful, to write:
+</p>
+
+<pre class="codeblock" lang="asm">
+    WIDTH = 2
+    HEIGHT = 3
+    AREA = WIDTH * HEIGHT
+    ...
+    mov %r0, $AREA
+</pre>
+
+<p>
+The <code>r0</code> register gets assigned the value 6, and we could just
+as correctly have written:
+</p>
+
+<pre class="codeblock" lang="asm">
+    AREA = 6 
+    ...
+    mov %r0, $AREA
+</pre>
+
+<p>
+Still, it's often much more illustrative to define the constants in such
+a way as to show how the values are assigned. Since symbol expressions are
+evaluated at assembly time, it does not affect the operation of the 
+program at run-time in any way to write an expansive set of definitions.
+</p>
+<p>
+I'll be making more extensive use of symbols as the complexity of
+the examples increases. 
+</p>
+
+<h3>Summary</h3>
+<ul>
+<li><p>We can define symbols to make assembly programs more readable,
+and easier to maintain.</p></li>
+<li><p>Symbols can be expressions, often in terms of other symbols. However, 
+the expressions are evaluated at assembly time -- the values used at
+run time will always be constants.</p></li>
+</ul>
+
+
+
+
