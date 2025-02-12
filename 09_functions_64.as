@@ -39,7 +39,6 @@ strlen:
 
     mov      x4, 0        // Use x4 as the character count; initially 0
 strlen_0:
-    mov      x5, 0
     ldrb     w5,[x0]      // Read into w5 the value in memory location x0
     cmp      w5, 0        // Compare to zero, the end-of-line terminator
     beq      strlen_1     // If it's equal to zero, jump out of loop
