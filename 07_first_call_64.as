@@ -17,7 +17,7 @@ STDOUT = 1         // We're going to write to stdout
 .global _start
 
 // Exit the program.
-//   On entry to exit, r0 should hold the exit code
+//   On entry to exit, x0 should hold the exit code
 exit:
     mov    x8, SYS_EXIT
     svc    0
@@ -37,10 +37,10 @@ _start:
     // Length of string is now in x0
 
     // Use the sys_write syscall to output a string
-    mov    x2, x0          // Transfer length of the message from r0 to r2
+    mov    x2, x0          // Transfer length of the message from x0 to x2
     mov    x0, STDOUT
     mov    x8, SYS_WRITE
-    ldr    x1, =msg       // Store the address of the message in r1
+    ldr    x1, =msg       // Store the address of the message in x1
     svc    0
 
     // Now exit

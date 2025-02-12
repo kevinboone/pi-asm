@@ -20,7 +20,7 @@ STDOUT = 1
 
 /* =========================== exit ========================================*/
 // Exit the program.
-//   On entry, r0 should hold the exit code
+//   On entry, x0 should hold the exit code
 exit:
     mov    x8, SYS_EXIT
     svc    0
@@ -39,9 +39,9 @@ strlen:
 
     mov      x4, 0        // Use x4 as the character count; initially 0
 strlen_0:
-    ldrh      w5,[x0]      // Read into x5 the value in memory location x0
-    //ldr      x5,[x0]      // Read into x5 the value in memory location x0
-    cmp      x5, 0        // Compare to zero, the end-of-line terminator
+    mov      x5, 0
+    ldrb     w5,[x0]      // Read into w5 the value in memory location x0
+    cmp      w5, 0        // Compare to zero, the end-of-line terminator
     beq      strlen_1     // If it's equal to zero, jump out of loop
     add      x0, x0, 1    // If not zero, add one to the character count...
     add      x4, x4, 1    //   and to the address we are looking at
@@ -73,7 +73,6 @@ print_str:
   
     mov      x8, SYS_WRITE
     mov      x1, x5          // Address is in x5
-    mov      x0, STDOUT
     mov      x0, STDOUT
     mov      x8, SYS_WRITE
 

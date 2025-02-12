@@ -17,15 +17,15 @@ STDOUT = 1
 
 /* =========================== exit ========================================*/
 // Exit the program.
-//   On entry, r0 should hold the exit code
+//   On entry, x0 should hold the exit code
 exit:
     mov    x8, SYS_EXIT
     svc    0
 
 /* =========================== strlen ======================================*/
 // Calulate the length of a null-terminated string
-//   On entry, r0 is the address of the string
-//   On exit, r0 is the length of the string, not including
+//   On entry, x0 is the address of the string
+//   On exit, x0 is the length of the string, not including
 //   the terminating null
 strlen:
 
@@ -34,7 +34,7 @@ strlen:
 
    mov      x4, 0        // Use x4 as the character count; initially 0
 strlen_0:
-   ldr      x5,[x0]      // Read into %r5 the value in memory location %r0
+   ldr      x5,[x0]      // Read into %r5 the value in memory location x0
    cmp      x5, 0        // Compare to zero, the end-of-line terminator
    beq      strlen_1     // If it's equal to zero, jump out of loop
    add      x0, x0, 1    // If not zero, add one to the character count...
@@ -52,13 +52,13 @@ strlen_1:
 _start:
     ldr    x0, =msg
     bl     strlen 
-    // Length of string is now in %r0
+    // Length of string is now in x0
 
     // Use the sys_write syscall to output a string
-    mov    x2, x0         // Transfer length of the message from r0 to r2
+    mov    x2, x0         // Transfer length of the message from x0 to x2
     mov    x0, STDOUT
     mov    x8, SYS_WRITE
-    ldr    x1, =msg      // Store the address of the message in r1
+    ldr    x1, =msg      // Store the address of the message in x1
     svc    0
 
     // Now exit
